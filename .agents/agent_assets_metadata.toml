@@ -1,0 +1,8 @@
+uploads = []
+generated = []
+
+[[outputs]]
+id = "d5JToPb2uDsJWOheFDDsJ"
+uri = "file://pose-engine.tar.gz"
+type = "unspecified"
+title = "pose-engine files (8.1MB)"
