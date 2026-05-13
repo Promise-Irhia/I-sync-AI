@@ -13,12 +13,12 @@
         "buildType": "apk"
       },
       "env": {
-        "EXPO_PUBLIC_DOMAIN": "YOUR_DEPLOYED_DOMAIN_HERE"
+        "EXPO_PUBLIC_DOMAIN": "https://i-sync-ai.onrender.com"
       }
     },
     "production": {
       "env": {
-        "EXPO_PUBLIC_DOMAIN": "YOUR_DEPLOYED_DOMAIN_HERE"
+        "EXPO_PUBLIC_DOMAIN": "https://i-sync-ai.onrender.com"
       }
     }
   },
