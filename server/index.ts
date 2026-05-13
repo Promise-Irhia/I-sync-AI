@@ -190,6 +190,7 @@ function configureExpoAndLanding(app: express.Application) {
 
   app.use("/assets", express.static(path.resolve(process.cwd(), "assets")));
   app.use("/pose-engine", express.static(path.resolve(process.cwd(), "server/public/pose-engine")));
+  app.use("/pose_landmarker_full.task", express.static(path.resolve(process.cwd(), "server/public/pose-engine/pose_landmarker_full.task")));
   app.use(express.static(path.resolve(process.cwd(), "static-build")));
 
   app.get("/download/defence", (_req, res) => {
