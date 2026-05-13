@@ -264,6 +264,7 @@ export function BLEProvider({ children }: { children: ReactNode }) {
   const connectedRef = useRef<any>(null);
   const subscriptionsRef = useRef<any[]>([]);
   const scanSubRef = useRef<any>(null);
+  const scanTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const webDeviceRef = useRef<any>(null);
 
   const isSupported = Platform.OS === 'web'
@@ -285,6 +286,7 @@ export function BLEProvider({ children }: { children: ReactNode }) {
     try { connectedRef.current?.cancelConnection?.(); } catch {}
     connectedRef.current = null;
     try { getManager()?.stopDeviceScan?.(); } catch {}
+    if (scanTimeoutRef.current) { clearTimeout(scanTimeoutRef.current); scanTimeoutRef.current = null; }
   }
 
   // ── Web Bluetooth implementation ────────────────────────────────────────────
@@ -485,6 +487,25 @@ export function BLEProvider({ children }: { children: ReactNode }) {
         });
       }
     );
+
+    // Stop scanning automatically after 30 seconds
+    const SCAN_TIMEOUT_MS = 30000;
+    if (scanTimeoutRef.current) clearTimeout(scanTimeoutRef.current);
+    scanTimeoutRef.current = setTimeout(() => {
+      try { manager.stopDeviceScan(); } catch {}
+      try { scanSubRef.current?.remove?.(); } catch {}
+      scanTimeoutRef.current = null;
+      setDiscoveredDevices(prev => {
+        if (prev.length === 0) {
+          setError('No devices found. Make sure your device is nearby and powered on, then try again.');
+          setStatus('error');
+        } else {
+          // Devices already listed — just stop scanning, user can still pick one
+          setStatus('idle');
+        }
+        return prev;
+      });
+    }, SCAN_TIMEOUT_MS);
   }, []);
 
   // selectDevice() is called after the user picks a device from discoveredDevices.
@@ -496,6 +517,7 @@ export function BLEProvider({ children }: { children: ReactNode }) {
 
     try { manager.stopDeviceScan(); } catch {}
     try { scanSubRef.current?.remove?.(); } catch {}
+    if (scanTimeoutRef.current) { clearTimeout(scanTimeoutRef.current); scanTimeoutRef.current = null; }
 
     setStatus('connecting');
     setError(null);
