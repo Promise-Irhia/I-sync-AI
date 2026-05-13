@@ -1,8 +1,6 @@
 import React, { useEffect } from 'react';
 import { Platform, StyleSheet, useColorScheme, View } from 'react-native';
-import { isLiquidGlassAvailable } from 'expo-glass-effect';
 import { Tabs } from 'expo-router';
-import { NativeTabs, Icon, Label } from 'expo-router/unstable-native-tabs';
 import { BlurView } from 'expo-blur';
 import { Ionicons } from '@expo/vector-icons';
 import { Colors } from '@/constants/colors';
@@ -15,7 +13,6 @@ if (Platform.OS !== 'web') {
   Notifications = require('expo-notifications');
 }
 
-// Show alerts even when the app is foregrounded
 if (Notifications) {
   Notifications.setNotificationHandler({
     handleNotification: async () => ({
@@ -26,38 +23,30 @@ if (Notifications) {
   });
 }
 
-function NativeTabLayout() {
-  return (
-    <NativeTabs>
-      <NativeTabs.Trigger name="index">
-        <Icon sf={{ default: 'stethoscope', selected: 'stethoscope' }} />
-        <Label>Dashboard</Label>
-      </NativeTabs.Trigger>
-      <NativeTabs.Trigger name="appointments">
-        <Icon sf={{ default: 'calendar', selected: 'calendar' }} />
-        <Label>Schedule</Label>
-      </NativeTabs.Trigger>
-      <NativeTabs.Trigger name="prescriptions">
-        <Icon sf={{ default: 'pill', selected: 'pill.fill' }} />
-        <Label>Rx</Label>
-      </NativeTabs.Trigger>
-      <NativeTabs.Trigger name="assistant">
-        <Icon sf={{ default: 'message', selected: 'message.fill' }} />
-        <Label>AI</Label>
-      </NativeTabs.Trigger>
-      <NativeTabs.Trigger name="profile">
-        <Icon sf={{ default: 'person', selected: 'person.fill' }} />
-        <Label>Profile</Label>
-      </NativeTabs.Trigger>
-    </NativeTabs>
-  );
-}
-
-function ClassicTabLayout() {
+export default function DoctorLayout() {
   const isDark = useColorScheme() === 'dark';
   const C = isDark ? Colors.dark : Colors.light;
   const isIOS = Platform.OS === 'ios';
   const isWeb = Platform.OS === 'web';
+  const { authHeader } = useAuth();
+  const base = getApiUrl();
+
+  useEffect(() => {
+    if (Platform.OS === 'web' || !Notifications) return;
+    (async () => {
+      try {
+        const { status } = await Notifications.requestPermissionsAsync();
+        if (status !== 'granted') return;
+        const tokenData = await Notifications.getExpoPushTokenAsync();
+        await fetch(`${base}api/push-token`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json', ...authHeader() },
+          body: JSON.stringify({ token: tokenData.data }),
+        });
+      } catch {}
+    })();
+  }, []);
+
   return (
     <Tabs
       screenOptions={{
@@ -88,29 +77,4 @@ function ClassicTabLayout() {
       <Tabs.Screen name="profile" options={{ title: 'Profile', tabBarIcon: ({ color }) => <Ionicons name="person-outline" size={22} color={color} /> }} />
     </Tabs>
   );
-}
-
-export default function DoctorLayout() {
-  const { authHeader } = useAuth();
-  const base = getApiUrl();
-
-  // Register Expo push token so the server can send fall alerts to this caregiver
-  useEffect(() => {
-    if (Platform.OS === 'web' || !Notifications) return;
-    (async () => {
-      try {
-        const { status } = await Notifications.requestPermissionsAsync();
-        if (status !== 'granted') return;
-        const tokenData = await Notifications.getExpoPushTokenAsync();
-        await fetch(`${base}api/push-token`, {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json', ...authHeader() },
-          body: JSON.stringify({ token: tokenData.data }),
-        });
-      } catch {}
-    })();
-  }, []);
-
-  if (isLiquidGlassAvailable()) return <NativeTabLayout />;
-  return <ClassicTabLayout />;
 }

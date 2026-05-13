@@ -38,3 +38,8 @@ externalPort = 80
 deploymentTarget = "vm"
 run = ["node", "server_dist/index.js"]
 build = ["npm", "run", "server:build"]
+
+[userenv]
+
+[userenv.shared]
+EXPO_PUBLIC_DOMAIN = "1242dedb-41aa-40b8-a712-7696964a9b51-00-1vmst4c6eaumj.riker.replit.dev"
