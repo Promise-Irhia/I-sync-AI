@@ -15,7 +15,7 @@ import React, {
   createContext, useContext, useRef, useState, useCallback, useEffect, ReactNode,
 } from 'react';
 import { Platform, PermissionsAndroid } from 'react-native';
-import AsyncStorage from '@react-native-async-storage/async-storage';
+
 
 // ── Types exported for consumer screens ──────────────────────────────────────
 
@@ -247,12 +247,6 @@ type BLEContextValue = {
 
 const BLEContext = createContext<BLEContextValue | null>(null);
 
-// Name (or partial name) of the watch to auto-connect when found during scanning.
-// Case-insensitive. Matches the ESP32 firmware's BLE_DEVICE_NAME "AAL_Wearable".
-const AUTO_CONNECT_NAME = 'AAL_Wearable';
-
-// AsyncStorage key for persisting the last successfully connected device
-const BLE_DEVICE_STORAGE_KEY = 'ble_last_device';
 
 // ── Provider ──────────────────────────────────────────────────────────────────
 
@@ -283,32 +277,6 @@ export function BLEProvider({ children }: { children: ReactNode }) {
     };
   }, []);
 
-  // On native app launch: silently reconnect to the last known device (if saved)
-  useEffect(() => {
-    if (Platform.OS === 'web') return;
-    AsyncStorage.getItem(BLE_DEVICE_STORAGE_KEY).then(raw => {
-      if (!raw) return;
-      try {
-        const saved = JSON.parse(raw) as { id: string; name: string };
-        if (saved?.id) selectDevice(saved.id);
-      } catch {}
-    }).catch(() => {});
-  // selectDevice is stable (useCallback []) — safe to omit from deps
-  // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []);
-
-  // Auto-connect to the preferred watch as soon as it appears in the scan list
-  useEffect(() => {
-    if (status !== 'scanning' || discoveredDevices.length === 0) return;
-    const preferred = discoveredDevices.find(d =>
-      d.name?.toLowerCase().includes(AUTO_CONNECT_NAME.toLowerCase())
-    );
-    if (preferred) {
-      // selectDevice is stable (useCallback with [] dep); calling it here is safe
-      selectDevice(preferred.id);
-    }
-  // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [discoveredDevices, status]);
 
   function cleanupNative() {
     try { scanSubRef.current?.remove?.(); } catch {}
@@ -688,11 +656,6 @@ export function BLEProvider({ children }: { children: ReactNode }) {
       }
 
       setStatus('connected');
-      // Persist device so we can auto-reconnect on next launch
-      AsyncStorage.setItem(BLE_DEVICE_STORAGE_KEY, JSON.stringify({
-        id: deviceId,
-        name: device.name || 'BLE Device',
-      })).catch(() => {});
     } catch (err: any) {
       setError(err.message || 'Failed to connect');
       setStatus('error');
@@ -707,8 +670,6 @@ export function BLEProvider({ children }: { children: ReactNode }) {
     setAccel(null);
     setDiscoveredDevices([]);
     setError(null);
-    // User explicitly disconnected — clear saved device so we don't auto-reconnect next launch
-    AsyncStorage.removeItem(BLE_DEVICE_STORAGE_KEY).catch(() => {});
   }, []);
 
   // ── Unified interface (auto-selects web vs native) ────────────────────────
