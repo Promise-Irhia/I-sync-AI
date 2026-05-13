@@ -489,6 +489,7 @@ export function BLEProvider({ children }: { children: ReactNode }) {
 
   // selectDevice() is called after the user picks a device from discoveredDevices.
   // It stops scanning, connects, discovers services, and subscribes to all data.
+  // Automatically cancels and shows an error if connection takes longer than 15 seconds.
   const selectDevice = useCallback(async (deviceId: string) => {
     const manager = getManager();
     if (!manager) return;
@@ -499,12 +500,29 @@ export function BLEProvider({ children }: { children: ReactNode }) {
     setStatus('connecting');
     setError(null);
 
+    const CONNECTION_TIMEOUT_MS = 15000;
+    let timeoutId: ReturnType<typeof setTimeout> | null = null;
+    const timeoutPromise = new Promise<never>((_, reject) => {
+      timeoutId = setTimeout(() => {
+        reject(new Error('Connection timed out. Make sure the device is nearby and powered on, then try again.'));
+      }, CONNECTION_TIMEOUT_MS);
+    });
+
     try {
-      const device = await manager.connectToDevice(deviceId, { autoConnect: false });
+      const device = await Promise.race([
+        manager.connectToDevice(deviceId, { autoConnect: false }),
+        timeoutPromise,
+      ]);
+      if (timeoutId) clearTimeout(timeoutId);
+
       connectedRef.current = device;
       setDeviceName(device.name || 'BLE Device');
 
-      await device.discoverAllServicesAndCharacteristics();
+      await Promise.race([
+        device.discoverAllServicesAndCharacteristics(),
+        new Promise<never>((_, reject) => setTimeout(() =>
+          reject(new Error('Service discovery timed out. Try again.')), CONNECTION_TIMEOUT_MS)),
+      ]);
 
       // Watch for disconnection and reset state
       device.onDisconnected(() => {
@@ -657,7 +675,10 @@ export function BLEProvider({ children }: { children: ReactNode }) {
 
       setStatus('connected');
     } catch (err: any) {
-      setError(err.message || 'Failed to connect');
+      if (timeoutId) clearTimeout(timeoutId);
+      try { manager.cancelDeviceConnection(deviceId); } catch {}
+      cleanupNative();
+      setError(err.message || 'Failed to connect. Try again.');
       setStatus('error');
     }
   }, []);
