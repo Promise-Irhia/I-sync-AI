@@ -982,6 +982,81 @@ Do not repeat the patient's data back unless asked. Respond naturally as a coach
     res.json({ sent: sent > 0, count: sent });
   });
 
+  // ── Manual Fall Alert (Patient → Emergency Contacts + Care Givers) ────────────
+  // POST /api/patient/fall-alert — patient manually sends a fall alert after fall confirmed
+  // Sends Twilio SMS to all emergency contacts supplied AND push notifications to all
+  // care givers who have this patient under them.
+  app.post('/api/patient/fall-alert', authenticate, async (req, res) => {
+    const user = (req as any).user;
+    const {
+      emergencyContacts,
+      locationLat,
+      locationLng,
+      confidence,
+      source,
+    } = req.body;
+
+    let vitals: { hr?: number; bp?: string; spo2?: number } | null = null;
+    try {
+      const vitalsHistory = await storage.getVitalsHistory(user.id, 1);
+      const latest = vitalsHistory.length > 0 ? vitalsHistory[vitalsHistory.length - 1] : null;
+      if (latest) {
+        vitals = {
+          hr: latest.heartRate,
+          bp: latest.systolicBP && latest.diastolicBP ? `${latest.systolicBP}/${latest.diastolicBP}` : undefined,
+          spo2: latest.spo2,
+        };
+      }
+    } catch {}
+
+    let smsSent = 0;
+    const contacts: { name?: string; phone: string }[] = Array.isArray(emergencyContacts) ? emergencyContacts : [];
+    for (const c of contacts) {
+      const phone = (c.phone ?? '').replace(/[^+\d]/g, '');
+      if (!phone) continue;
+      try {
+        await sendEmergencySMS(phone, user.name ?? 'Unknown patient', user.uniqueId ?? '', vitals, locationLat, locationLng, confidence);
+        smsSent++;
+      } catch (err: any) {
+        console.error('[fall-alert] SMS failed:', err?.message ?? err);
+      }
+    }
+
+    try {
+      const profile = await storage.getPatientProfile(user.id);
+      const profileContact = profile?.emergencyContact;
+      if (profileContact?.phone) {
+        const profilePhone = profileContact.phone.replace(/[^+\d]/g, '');
+        const alreadySent = contacts.some(c => (c.phone ?? '').replace(/[^+\d]/g, '') === profilePhone);
+        if (!alreadySent && profilePhone) {
+          await sendEmergencySMS(profilePhone, user.name ?? 'Unknown patient', user.uniqueId ?? '', vitals, locationLat, locationLng, confidence);
+          smsSent++;
+        }
+      }
+    } catch {}
+
+    let pushSent = 0;
+    try {
+      const tokens = await storage.getCaregiversPushTokensForPatient(user.id);
+      if (tokens.length > 0) {
+        const sourceLabel = source === 'both' ? 'Watch + Camera' : source === 'watch' ? 'Watch accelerometer' : source === 'skeleton' ? 'Camera skeleton' : 'Fall detection';
+        const confidencePct = confidence != null ? ` (${Math.round(confidence * 100)}% confidence)` : '';
+        await sendExpoPushNotifications(
+          tokens,
+          '🚨 Fall Alert — Immediate Action Required',
+          `${user.name ?? 'Your patient'} has confirmed a fall emergency.${confidencePct} Detected via: ${sourceLabel}. Open I-Sync now.`,
+          { patientId: user.uniqueId, type: 'FALL_ALERT', confirmed: true },
+        );
+        pushSent = tokens.length;
+        console.log(`[fall-alert] Push sent to ${pushSent} caregiver(s)`);
+      }
+    } catch (pushErr: any) {
+      console.error('[fall-alert] Push failed:', pushErr?.message ?? pushErr);
+    }
+
+    res.json({ sent: true, smsSent, pushSent });
+  });
+
   // ── Meal Plan Routes (Care Giver → Patient) ───────────────────────────────────
   // Care givers create/manage meal plans; patients view and confirm meals eaten.
 
